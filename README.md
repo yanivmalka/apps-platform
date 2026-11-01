@@ -17,7 +17,7 @@
    - Authentication: להפעיל Google ו־Anonymous.
    - Authentication ← Settings ← Authorized domains: להוסיף `yanivmalka.github.io`.
 2. **הגדרות ווב**: Project settings ← Your apps ← Web. להעתיק את `firebaseConfig` ל־`sites/sponsors/config.js`, ולקובץ `src/platform-config.js` באפליקציית העומר.
-3. **פריסה אוטומטית**: Project settings ← Service accounts ← Generate new private key. את תוכן הקובץ שומרים ב־GitHub כ־secret בשם `FIREBASE_SERVICE_ACCOUNT` (Settings ← Secrets and variables ← Actions). מכאן כל push ל־main פורס את החוקים ואת האתר לכתובת `https://malka-apps.web.app`.
+3. **פריסה אוטומטית**: Project settings ← Service accounts ← Generate new private key. את תוכן הקובץ שומרים ב־GitHub כ־secret בשם `FIREBASE_SERVICE_ACCOUNT` (Settings ← Secrets and variables ← Actions). מכאן כל push ל־main פורס את החוקים ל־Firebase. האתר עצמו מתפרסם ב־GitHub Pages: https://yanivmalka.github.io/apps-platform/
 4. **הפיכה למנהל**: נכנסים לאתר, מתחברים עם Google, ובלשונית "ההזמנות שלי" מעתיקים את מזהה החשבון. ב־Firestore יוצרים מסמך `admins/<המזהה>` עם שדה `apps` מסוג array שמכיל את `*`.
 5. **באתר, בלשונית ניהול**: "טען חבילות מומלצות" (גם שומר את הגדרות המלאי), ואחר כך "שמירה" בהגדרות.
 
