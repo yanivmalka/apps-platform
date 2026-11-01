@@ -1,14 +1,14 @@
 // Public Firebase web config of the shared project (not a secret: access is enforced by firestore.rules).
 // Paste the firebaseConfig block from Firebase console → Project settings → Your apps → Web app.
-// While apiKey is empty the site runs on the local test backend (data stays in this browser).
+// ?backend=memory runs the site on the local test backend instead (data stays in this browser).
 window.PLATFORM_CONFIG = {
   appId: 'omer',
   firebase: {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    storageBucket: '',
-    messagingSenderId: '',
-    appId: '',
+    apiKey: 'AIzaSyAVyw2RUh3T0UPaxbCluCgFKzkLaGZOIyQ',
+    authDomain: 'malka-apps.firebaseapp.com',
+    projectId: 'malka-apps',
+    storageBucket: 'malka-apps.firebasestorage.app',
+    messagingSenderId: '141711225817',
+    appId: '1:141711225817:web:30ceb430dee31b59ebdfc8',
   },
 };
