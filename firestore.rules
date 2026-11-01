@@ -1,0 +1,76 @@
+rules_version = '2';
+// Security rules for the shared apps platform (one Firebase project, many apps).
+// Data model: see ARCHITECTURE.md. Every app lives under apps/{app}; people (users) and admins are global.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function realUser() { return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+    function adminDoc() { return /databases/$(database)/documents/admins/$(request.auth.uid); }
+    function isAnyAdmin() { return realUser() && exists(adminDoc()); }
+    function isAdmin(app) { return isAnyAdmin() && get(adminDoc()).data.apps.hasAny(['*', app]); }
+    function registered() { return exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function onlyKeys(keys) { return request.resource.data.keys().hasOnly(keys); }
+    function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+
+    // Platform admins: created by hand in the Firebase console (admins/<uid> with apps: ['*'] or ['omer', ...]).
+    match /admins/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAnyAdmin());
+      allow write: if false;
+    }
+
+    // Customers: one profile per person, shared by all apps. Registration = creating this doc.
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAnyAdmin());
+      allow create, update: if realUser() && request.auth.uid == uid
+        && onlyKeys(['name', 'phone', 'email', 'created', 'updated', 'apps'])
+        && request.resource.data.name is string && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 80
+        && request.resource.data.phone is string && request.resource.data.phone.size() >= 9 && request.resource.data.phone.size() <= 20;
+      allow delete: if false;
+    }
+
+    match /apps/{app} {
+      allow read: if true;
+      allow write: if isAdmin(app);
+
+      // Public catalogue and content the app and the site read: plans, inventory settings, quotes, published slots.
+      match /plans/{id}  { allow read: if true; allow write: if isAdmin(app); }
+      match /config/{id} { allow read: if true; allow write: if isAdmin(app); }
+      match /quotes/{id} { allow read: if true; allow write: if isAdmin(app); }
+      // slots/<season>-<night>: what the app shows that night. Rebuilt by the admin site when an order changes.
+      match /slots/{id}  { allow read: if true; allow write: if isAdmin(app); }
+
+      // Orders: a registered customer creates their own pending order; only an admin approves.
+      match /orders/{id} {
+        allow read: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin(app));
+        allow create: if isAdmin(app) || (
+          realUser() && registered()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && !('sim' in request.resource.data)
+          && request.resource.data.price is number
+          && request.resource.data.name is string && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 80
+          && (request.resource.data.planId == 'custom'
+              ? request.resource.data.price >= get(/databases/$(database)/documents/apps/$(app)/config/inventory).data.minPrice
+              : (get(/databases/$(database)/documents/apps/$(app)/plans/$(request.resource.data.planId)).data.active == true
+                 && request.resource.data.price == get(/databases/$(database)/documents/apps/$(app)/plans/$(request.resource.data.planId)).data.price)));
+        // The customer may only cancel their own order while it waits for payment.
+        allow update: if isAdmin(app) || (
+          signedIn() && resource.data.uid == request.auth.uid
+          && resource.data.status == 'pending' && request.resource.data.status == 'cancelled' && changedOnly(['status']));
+        allow delete: if isAdmin(app);
+      }
+
+      // stats/<season>-<night>-<shard>: counters the app increments (shown / prayed / more / dwell / hours per order).
+      // Any app install (anonymous sign-in) may add to them. v1 limit: rules cannot check that values only grow;
+      // move to a Cloud Function + App Check when the Blaze plan is enabled.
+      match /stats/{id} {
+        allow read: if true;
+        allow create, update: if signedIn()
+          && onlyKeys(['season', 'night', 'shown', 'prayed', 'more', 'dwell', 'hours', 'updated'])
+          && request.resource.data.updated == request.time;
+        allow delete: if isAdmin(app);
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+name: Deploy
+# Deploys security rules + the dedications site to Firebase on every push to main.
+# Needs the repository secret FIREBASE_SERVICE_ACCOUNT (JSON key of a service account with the
+# "Firebase Admin" role). Without the secret the job is skipped.
+on:
+  push: { branches: [main] }
+  workflow_dispatch:
+concurrency: { group: deploy, cancel-in-progress: false }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secret
+        id: s
+        env: { SA: "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" }
+        run: echo "ok=$([ -n "$SA" ] && echo 1 || echo 0)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.s.outputs.ok == '1'
+      - uses: actions/setup-node@v4
+        if: steps.s.outputs.ok == '1'
+        with: { node-version: 22, cache: npm }
+      - name: Deploy
+        if: steps.s.outputs.ok == '1'
+        env: { SA: "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" }
+        run: |
+          npm ci
+          npm run build
+          echo "$SA" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx firebase deploy --only firestore:rules,firestore:indexes,hosting --non-interactive

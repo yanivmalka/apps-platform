@@ -1,0 +1,19 @@
+{
+  "name": "apps-platform",
+  "version": "1.0.0",
+  "description": "Shared backend (Firebase) for all of Yaniv Malka apps: auth, customers, sponsorships/dedications, stats",
+  "scripts": {
+    "build": "node sdk/build.mjs",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-apps-platform \"node --test tests/\"",
+    "serve": "python3 -m http.server 8090",
+    "deploy": "firebase deploy --only firestore:rules,firestore:indexes,hosting"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^3.0.4",
+    "esbuild": "^0.24.2",
+    "firebase": "^10.14.1",
+    "firebase-tools": "^13.29.1"
+  },
+  "private": true
+}
