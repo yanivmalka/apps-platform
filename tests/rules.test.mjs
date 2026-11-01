@@ -86,3 +86,15 @@ test('admins list is not writable from clients', async () => {
   await assertFails(setDoc(doc(as('boss'), 'admins/cust'), { apps: ['*'] }));
   await assertSucceeds(getDoc(doc(as('cust'), 'admins/cust')));
 });
+
+test('per-user app data: only the owner (real sign-in) reads and writes it', async () => {
+  const R = 'apps/reporting-hours/users';
+  await assertSucceeds(setDoc(doc(as('lect'), `${R}/lect/kv/reports`), { v: '[]', updated: 1 }));
+  await assertSucceeds(getDoc(doc(as('lect'), `${R}/lect/kv/reports`)));
+  await assertSucceeds(getDocs(collection(as('lect'), `${R}/lect/kv`)));
+  await assertFails(getDoc(doc(as('other'), `${R}/lect/kv/reports`)));
+  await assertFails(setDoc(doc(as('other'), `${R}/lect/kv/reports`), { v: '[]' }));
+  await assertFails(getDoc(doc(as('boss'), `${R}/lect/kv/reports`)));                         // admins too
+  await assertFails(setDoc(doc(anon('lect'), `${R}/lect/kv/reports`), { v: '[]' }));           // anonymous
+  await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), `${R}/lect/kv/reports`)));
+});

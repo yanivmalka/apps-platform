@@ -61,6 +61,12 @@ service cloud.firestore {
         allow delete: if isAdmin(app);
       }
 
+      // users/<uid>/...: one person's private data inside an app (e.g. reporting-hours: workplaces, reports).
+      // Only that signed-in person (Google, not anonymous) reads or writes it. Admins have no access.
+      match /users/{uid}/{rest=**} {
+        allow read, write: if realUser() && request.auth.uid == uid;
+      }
+
       // stats/<season>-<night>-<shard>: counters the app increments (shown / prayed / more / dwell / hours per order).
       // Any app install (anonymous sign-in) may add to them. v1 limit: rules cannot check that values only grow;
       // move to a Cloud Function + App Check when the Blaze plan is enabled.

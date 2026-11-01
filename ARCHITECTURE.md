@@ -17,6 +17,8 @@ apps/{appId}/stats/{season}-{night}-{shard}
                                      { season, night, shown:{orderId:n}, prayed:{}, more:{}, dwell:{},
                                        hours:{orderId:{hour:n}}, updated }
 apps/{appId}/quotes/{id}             { text, source, order, active }
+apps/{appId}/users/{uid}/...        private per-person app data (owner only, Google sign-in; admins have no access)
+apps/reporting-hours/users/{uid}/kv/{key}  { v: JSON string, updated } ← one doc per local storage key
 ```
 
 ## Flow of a dedication
