@@ -162,12 +162,17 @@ function refreshSummary(){
 
 /* ===================== MINE TAB ===================== */
 function buildMine(){$('#main').innerHTML=`<section class="block"><h2>ההזמנות שלי</h2><p class="sub">חשיפות והצבעות "הזכרתי בתפילתי" מתעדכנות מהאפליקציה בזמן הספירה.</p><div class="orders" id="mine"></div><p class="note" id="acct" style="margin-top:18px"></p></section>`}
+/* Link that opens the app on the order's first night with this dedication shown first (nothing is saved in the app). */
+function previewUrl(o){const base=(window.PLATFORM_CONFIG||{}).appUrl;if(!base)return '';const ds=Object.keys(o.alloc||{}).map(Number).sort((a,b)=>a-b);
+  const q=new URLSearchParams({preview:'1',p:o.purpose||'',n:o.name||'',f:o.from||'',night:String(ds[0]||o.start||1),season:String(o.season||SEASON.hy),o:o.id});
+  return base+'?'+q.toString();}
 function orderCard(o,admin){const st=STATUS[o.status]||['',''];const days=Object.keys(o.alloc||{}).map(Number).sort((a,b)=>a-b);
   const pr=o.impressions?Math.min(1,(o.shown||0)/o.impressions):0;const rate=o.shown?((o.prayed||0)/o.shown*100).toFixed(1):'0';
   return `<div class="ocard"><div class="row" style="justify-content:space-between"><span class="ded">${esc(o.purpose)} ${esc(o.name)}</span><span class="tag ${st[1]}">${st[0]}</span></div>
     <div class="note">${esc(o.planName)} · ${days.length?`ליל ${gem(days[0])}${days.length>1?' עד ליל '+gem(days[days.length-1]):''}`:''} · ${fmtS(o.price)}${o.from?' · הוקדש ע״י '+esc(o.from):''}</div>
     <div class="prog" aria-hidden="true"><span style="width:${Math.round(pr*100)}%"></span></div>
     <div class="stats"><span><b class="num">${fmtN(o.shown)}</b> / ${fmtN(o.impressions)} חשיפות</span><span><b class="num">${fmtN(o.prayed)}</b> הזכירו בתפילתם</span><span><b class="num">${rate}%</b> שיעור תפילה</span></div>
+    ${previewUrl(o)&&o.status!=='cancelled'?`<div class="row"><a class="btn small" href="${esc(previewUrl(o))}" target="_blank" rel="noopener">איך זה ייראה באפליקציה</a></div>`:''}
     ${!admin&&o.status==='pending'?`<div class="row">${S.confirm===o.id?`<div class="confirm-row">לבטל את ההזמנה? <button class="btn small danger" data-act="cancelMine" data-id="${o.id}">כן, בטלו</button><button class="btn small" data-act="noConfirm">לא</button></div>`:`<button class="btn small danger" data-act="askCancel" data-id="${o.id}">ביטול הזמנה</button>`}</div>`:''}</div>`;}
 function refreshMine(){const m=$('#mine');if(!m)return;const ac=$('#acct');if(ac)ac.textContent=S.uid?'מזהה החשבון שלך (לצורכי תמיכה): '+S.uid:'';if(!S.uid){m.innerHTML='<div class="empty">התחברו כדי לראות את ההזמנות שלכם.</div>';return}
   if(!S.ready.orders){m.innerHTML='<div class="empty">טוען…</div>';return}
@@ -254,7 +259,8 @@ function refreshAdmin(){
     <td><span class="tag ${st[1]}">${st[0]}</span></td><td>${o.status==='pending'?`<button class="btn small primary" data-act="setStatus" data-id="${o.id}" data-s="active">אשר תשלום</button> `:''}
     ${o.status==='active'?`<button class="btn small" data-act="setStatus" data-id="${o.id}" data-s="paused">השהה</button> `:''}
     ${o.status==='paused'?`<button class="btn small" data-act="setStatus" data-id="${o.id}" data-s="active">חדש</button> `:''}
-    ${LIVE.includes(o.status)?`<button class="btn small danger" data-act="setStatus" data-id="${o.id}" data-s="cancelled">בטל</button>`:''}</td></tr>`}).join('')}</tbody></table>`:'<div class="empty">אין הזמנות בסינון הזה.</div>';
+    ${LIVE.includes(o.status)?`<button class="btn small danger" data-act="setStatus" data-id="${o.id}" data-s="cancelled">בטל</button>`:''}
+    ${previewUrl(o)?` <a class="btn small" href="${esc(previewUrl(o))}" target="_blank" rel="noopener">תצוגה</a>`:''}</td></tr>`}).join('')}</tbody></table>`:'<div class="empty">אין הזמנות בסינון הזה.</div>';
   // members
   $('#membersTbl').innerHTML=S.members.length?`<table><thead><tr><th>שם</th><th>טלפון</th><th>אימייל</th><th>הזמנות</th><th>נרשם</th></tr></thead><tbody>${S.members.map(m=>`<tr><td>${esc(m.name)}</td><td dir="ltr">${esc(m.phone)}</td><td dir="ltr">${esc(m.email)}</td><td class="num">${S.orders.filter(o=>o.uid===m.id).length}</td><td>${m.created?new Date(m.created).toLocaleDateString('he-IL'):''}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">עדיין אין משתמשים רשומים.</div>';
   $('#fakeConfirm').innerHTML=S.confirm==='delFake'?`<div class="confirm-row">למחוק ${fmtN(sim.length)} הזמנות פיקטיביות? <button class="btn small danger" data-act="delFake">מחק</button><button class="btn small" data-act="noConfirm">ביטול</button></div>`:'';}
