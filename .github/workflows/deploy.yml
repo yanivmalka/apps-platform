@@ -27,4 +27,5 @@ jobs:
           npm run build
           echo "$SA" > "$RUNNER_TEMP/sa.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          echo "Deploying as: $(jq -r .client_email "$RUNNER_TEMP/sa.json") (project $(jq -r .project_id "$RUNNER_TEMP/sa.json"))"
           npx firebase deploy --only firestore:rules,firestore:indexes,hosting --non-interactive
