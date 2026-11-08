@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { test, before, after, beforeEach } from 'node:test';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, getDocs, collection, query, where, increment, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where, increment, serverTimestamp } from 'firebase/firestore';
 
 let env;
 const A = 'apps/omer';
@@ -97,4 +97,50 @@ test('per-user app data: only the owner (real sign-in) reads and writes it', asy
   await assertFails(getDoc(doc(as('boss'), `${R}/lect/kv/reports`)));                         // admins too
   await assertFails(setDoc(doc(anon('lect'), `${R}/lect/kv/reports`), { v: '[]' }));           // anonymous
   await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), `${R}/lect/kv/reports`)));
+});
+
+test('sharing: grantees reach the owner\'s kv data by role, only with a verified email grant', async () => {
+  const R = 'apps/reporting-hours/users';
+  const S = 'apps/reporting-hours/shared';
+  const g = (uid, email, verified = true) =>
+    env.authenticatedContext(uid, { email, email_verified: verified, firebase: { sign_in_provider: 'google.com' } }).firestore();
+  const owner = g('lect', 'lect@gmail.com');
+  const grant = role => ({ email: 'wife@gmail.com', role, ownerName: 'מרצה', ownerEmail: 'lect@gmail.com', created: 1 });
+  // the owner writes the grant and its index
+  await assertSucceeds(setDoc(doc(owner, `${R}/lect/grants/wife@gmail.com`), grant('view')));
+  await assertSucceeds(setDoc(doc(owner, `${S}/wife@gmail.com/owners/lect`), grant('view')));
+  await assertFails(setDoc(doc(owner, `${S}/wife@gmail.com/owners/other`), grant('view')));       // not their uid
+  await assertFails(setDoc(doc(owner, `${S}/wife@gmail.com/owners/lect`), grant('admin')));        // bad role
+  await assertFails(setDoc(doc(g('x', 'x@gmail.com'), `${S}/wife@gmail.com/owners/x`), { ...grant('full'), email: 'other@gmail.com' }));
+  await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), `${R}/lect/kv/reports~v1`), { v: '[]', updated: 1 }));
+
+  const wife = g('wife', 'Wife@gmail.com'); // token emails are compared lower-case
+  const stranger = g('str', 'str@gmail.com');
+  const unverified = g('fake', 'wife@gmail.com', false);
+  // view
+  await assertSucceeds(getDocs(collection(wife, `${S}/wife@gmail.com/owners`)));
+  await assertFails(getDocs(collection(stranger, `${S}/wife@gmail.com/owners`)));
+  await assertSucceeds(getDoc(doc(wife, `${R}/lect/grants/wife@gmail.com`)));
+  await assertSucceeds(getDocs(collection(wife, `${R}/lect/kv`)));
+  await assertFails(setDoc(doc(wife, `${R}/lect/kv/reports~v1`), { v: '[1]', updated: 2 }));
+  await assertFails(getDocs(collection(stranger, `${R}/lect/kv`)));
+  await assertFails(getDocs(collection(unverified, `${R}/lect/kv`)));
+  await assertFails(getDocs(collection(wife, `${R}/lect/backups`)));                               // kv only
+  await assertFails(setDoc(doc(wife, `${R}/lect/grants/wife@gmail.com`), grant('full')));          // cannot raise own role
+  await assertSucceeds(updateDoc(doc(wife, `${R}/lect/grants/wife@gmail.com`), { granteeName: 'אשתו', seen: 5 }));
+  await assertFails(updateDoc(doc(wife, `${R}/lect/grants/wife@gmail.com`), { role: 'full' }));
+  // report
+  await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), `${R}/lect/grants/wife@gmail.com`), grant('report')));
+  await assertSucceeds(setDoc(doc(wife, `${R}/lect/kv/reports~v1`), { v: '[1]', updated: 2 }));
+  await assertSucceeds(setDoc(doc(wife, `${R}/lect/kv/sessions~v1`), { v: '[]', updated: 2 }));
+  await assertSucceeds(setDoc(doc(wife, `${R}/lect/kv/accumulated~v2`), { v: '{}', updated: 2 }));
+  await assertFails(setDoc(doc(wife, `${R}/lect/kv/workplaces~v1`), { v: '[]', updated: 2 }));
+  // full
+  await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), `${R}/lect/grants/wife@gmail.com`), grant('full')));
+  await assertSucceeds(setDoc(doc(wife, `${R}/lect/kv/workplaces~v1`), { v: '[]', updated: 3 }));
+  await assertFails(getDocs(collection(wife, `${R}/lect/backup-data`)));
+  // leaving / revoking
+  await assertSucceeds(deleteDoc(doc(wife, `${S}/wife@gmail.com/owners/lect`)));
+  await assertSucceeds(deleteDoc(doc(wife, `${R}/lect/grants/wife@gmail.com`)));
+  await assertFails(getDocs(collection(wife, `${R}/lect/kv`)));
 });
