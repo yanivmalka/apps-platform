@@ -19,6 +19,9 @@ apps/{appId}/stats/{season}-{night}-{shard}
 apps/{appId}/quotes/{id}             { text, source, order, active }
 apps/{appId}/users/{uid}/...        private per-person app data (owner only, Google sign-in; admins have no access)
 apps/reporting-hours/users/{uid}/kv/{key}  { v: JSON string, updated } ← one doc per local storage key
+apps/{appId}/users/{uid}/grants/{email}     { email, role: view|report|full, ownerName, ownerEmail, created,
+                                       granteeName?, seen? } ← owner shares their kv data with a Google account
+apps/{appId}/shared/{email}/owners/{uid}    { email, role, ownerName, ownerEmail, created } ← same grant, listed by the grantee
 ```
 
 ## Flow of a dedication

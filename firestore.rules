@@ -12,6 +12,14 @@ service cloud.firestore {
     function registered() { return exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
     function onlyKeys(keys) { return request.resource.data.keys().hasOnly(keys); }
     function changedOnly(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    // Sharing: a verified Google email, lower-case, is the key of a grant.
+    function myEmail() { return request.auth.token.email.lower(); }
+    function verifiedEmail() { return realUser() && request.auth.token.email_verified == true; }
+    function isGrantee(email) { return verifiedEmail() && myEmail() == email; }
+    function grantPath(app, uid) { return /databases/$(database)/documents/apps/$(app)/users/$(uid)/grants/$(myEmail()); }
+    function grantRole(app, uid) {
+      return verifiedEmail() && exists(grantPath(app, uid)) ? get(grantPath(app, uid)).data.role : '';
+    }
 
     // Platform admins: created by hand in the Firebase console (admins/<uid> with apps: ['*'] or ['omer', ...]).
     match /admins/{uid} {
@@ -65,6 +73,30 @@ service cloud.firestore {
       // Only that signed-in person (Google, not anonymous) reads or writes it. Admins have no access.
       match /users/{uid}/{rest=**} {
         allow read, write: if realUser() && request.auth.uid == uid;
+      }
+
+      // Sharing (reporting-hours first): the owner grants another Google account access to their kv data.
+      // users/<owner>/grants/<email>: { email, role: view|report|full, ownerName, ownerEmail, created, granteeName?, seen? }
+      //   written by the owner (rule above); the grantee reads it, may stamp their name / last seen, or delete it (leave).
+      // shared/<email>/owners/<owner>: the same grant, indexed by the grantee's email so they can list who shared with them.
+      match /users/{uid}/grants/{email} {
+        allow read, delete: if isGrantee(email);
+        allow update: if isGrantee(email) && changedOnly(['granteeName', 'seen'])
+          && request.resource.data.get('granteeName', '') is string && request.resource.data.get('granteeName', '').size() <= 80;
+      }
+      match /shared/{email}/owners/{owner} {
+        allow read: if isGrantee(email) || (realUser() && request.auth.uid == owner);
+        allow delete: if isGrantee(email) || (realUser() && request.auth.uid == owner);
+        allow create, update: if realUser() && request.auth.uid == owner && request.resource.data.email == email
+          && onlyKeys(['email', 'role', 'ownerName', 'ownerEmail', 'created'])
+          && request.resource.data.role in ['view', 'report', 'full'];
+      }
+      // A grantee's access to the owner's synced data: every role reads; 'full' writes any key;
+      // 'report' writes only the reports, session marks and the accumulated-minutes counter.
+      match /users/{uid}/kv/{key} {
+        allow read: if grantRole(app, uid) in ['view', 'report', 'full'];
+        allow write: if grantRole(app, uid) == 'full'
+          || (grantRole(app, uid) == 'report' && key in ['reports~v1', 'sessions~v1', 'accumulated~v2']);
       }
 
       // stats/<season>-<night>-<shard>: counters the app increments (shown / prayed / more / dwell / hours per order).
