@@ -1,6 +1,7 @@
 {
   "firestore": { "rules": "firestore.rules", "indexes": "firestore.indexes.json" },
   "storage": { "rules": "storage.rules" },
+  "functions": [{ "source": "functions", "codebase": "default", "runtime": "nodejs22", "ignore": ["node_modules", "test"] }],
   "hosting": {
     "public": "sites/sponsors",
     "ignore": ["**/.*"],
