@@ -24,6 +24,13 @@ apps/{appId}/users/{uid}/grants/{email}     { email, role: view|report|full, own
 apps/{appId}/shared/{email}/owners/{uid}    { email, role, ownerName, ownerEmail, created } ← same grant, listed by the grantee
 ```
 
+Cloud Storage (bucket `malka-apps.firebasestorage.app`, rules in `storage.rules`, Blaze plan since 17.11.2026):
+
+```
+apps/{appId}/users/{uid}/files/...   private files of one person (owner only; PDF or image, < 10 MB)
+                                     e.g. reporting-hours: files/tax/{workplaceId}-{year}.{ext} — tax-coordination forms
+```
+
 ## Flow of a dedication
 
 1. **Order** — a signed-in, registered customer creates `orders/{id}` with `status: 'pending'`.

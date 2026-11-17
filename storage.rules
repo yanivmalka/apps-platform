@@ -1,0 +1,25 @@
+rules_version = '2';
+// Cloud Storage rules (bucket malka-apps.firebasestorage.app). Same layout as Firestore: apps/{app}/users/{uid}/...
+// Only files a person keeps for themselves (e.g. reporting-hours: tax-coordination forms per workplace and year).
+service firebase.storage {
+  match /b/{bucket}/o {
+    function realUser() { return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+    function owner(uid) { return realUser() && request.auth.uid == uid; }
+    // PDF or image, up to 10 MB.
+    function okFile() {
+      return request.resource.size < 10 * 1024 * 1024
+        && (request.resource.contentType == 'application/pdf' || request.resource.contentType.matches('image/.*'));
+    }
+
+    // users/<uid>/files/...: one person's private files inside an app. Only that signed-in person reads or writes.
+    match /apps/{app}/users/{uid}/files/{path=**} {
+      allow read, delete: if owner(uid);
+      allow create, update: if owner(uid) && okFile();
+    }
+
+    // Everything else is closed.
+    match /{all=**} {
+      allow read, write: if false;
+    }
+  }
+}
