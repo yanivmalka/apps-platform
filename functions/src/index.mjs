@@ -5,13 +5,16 @@
 //   mailSend  (every 15 min) — for each user who enabled it: after their send time, one mail per session of
 //             today that is still unreported, with a one-time code in the Reply-To (reportinghours.app+<code>@…).
 //   mailPoll  (every 5 min)  — reads new mail over IMAP; a reply is accepted only with a valid unused code, from
-//             the user's address, with Gmail's DKIM/SPF pass. The parsed reply goes to the user's mailInbox; the
-//             app imports it as a report (or a cancellation) on next open. The sender gets a confirmation.
+//             the user's address, with Gmail's DKIM/SPF pass. The reply is recorded right away, in one transaction,
+//             in the user's synced data (kv: the report + minutes counter, or the session mark — mailRecord.mjs),
+//             like another device would; every device and every grantee sees it on the next sync. A copy stays
+//             in mailInbox (status 'recorded'). The sender gets a confirmation.
 //
 // Data (Firestore):
 //   apps/reporting-hours/users/{uid}/mail/plan     ← written by the app: { enabled, email, sendTime, days: {date: [item]} }
 //   apps/reporting-hours/users/{uid}/mail/sent     ← { sent: { "<courseId>|<date>": code } }
-//   apps/reporting-hours/users/{uid}/mailInbox/{id} ← parsed replies, status 'new' → 'imported' (by the app)
+//   apps/reporting-hours/users/{uid}/mailInbox/{id} ← record of each accepted reply (status 'recorded', reportId)
+//   apps/reporting-hours/users/{uid}/kv/…          ← the app's synced data; the reply is written here
 //   apps/reporting-hours/mailCodes/{code}          ← server only (no client rule matches)
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
@@ -32,6 +35,7 @@ import {
   replyAddress,
   senderOk,
 } from './mailParse.mjs';
+import { KV, parseJSON, recordReply } from './mailRecord.mjs';
 
 initializeApp();
 const db = getFirestore();
@@ -175,13 +179,27 @@ async function handleReply(parsed, mailer) {
     await reply(rejectionMail('unknown'), code);
     return;
   }
+  const receivedAt = Date.now();
   await db.runTransaction(async tx => {
     const fresh = await tx.get(codeRef);
     if (fresh.get('used')) throw new Error('code already used');
-    tx.update(codeRef, { used: true, usedAt: Date.now() });
+    // The user's synced data (reads first — a transaction writes only after all its reads).
+    const kvRef = id => db.doc(`${APP}/users/${c.uid}/kv/${id}`);
+    const names = ['reports', 'sessions', 'accumulated', 'workplaces', 'payBasis', 'leftoverMode'];
+    const snaps = await Promise.all(names.map(n => tx.get(kvRef(KV[n]))));
+    const data = Object.fromEntries(names.map((n, i) => [n, parseJSON(snaps[i].get('v'), undefined)]));
+    const { changes, reportId, skipped } = recordReply(data, {
+      ...result, courseId: c.item.courseId, courseName: c.item.courseName, workplaceId: c.item.workplaceId,
+      date: c.date, text, receivedAt,
+    }, receivedAt);
+    for (const [name, value] of Object.entries(changes)) {
+      tx.set(kvRef(KV[name]), { v: JSON.stringify(value), updated: receivedAt });
+    }
+    tx.update(codeRef, { used: true, usedAt: receivedAt });
     tx.create(db.collection(`${APP}/users/${c.uid}/mailInbox`).doc(), {
       code, courseId: c.item.courseId, workplaceId: c.item.workplaceId, date: c.date,
-      ...result, text, from, receivedAt: Date.now(), status: 'new', created: FieldValue.serverTimestamp(),
+      ...result, text, from, receivedAt, status: skipped ? 'skipped' : 'recorded',
+      ...(reportId ? { reportId } : {}), created: FieldValue.serverTimestamp(),
     });
   });
   await reply(confirmationMail(result, c.item, c.date));
