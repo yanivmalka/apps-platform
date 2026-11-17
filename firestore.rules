@@ -99,6 +99,15 @@ service cloud.firestore {
           || (grantRole(app, uid) == 'report' && key in ['reports~v1', 'sessions~v1', 'accumulated~v2']);
       }
 
+      // Reporting by e-mail: replies the server parsed into users/<owner>/mailInbox (status 'new').
+      // A grantee who may write reports ('report' / 'full') imports them for the owner and marks them imported.
+      match /users/{uid}/mailInbox/{id} {
+        allow read: if grantRole(app, uid) in ['report', 'full'];
+        allow update: if grantRole(app, uid) in ['report', 'full']
+          && resource.data.status == 'new' && request.resource.data.status == 'imported'
+          && changedOnly(['status', 'importedAt', 'reportId']);
+      }
+
       // stats/<season>-<night>-<shard>: counters the app increments (shown / prayed / more / dwell / hours per order).
       // Any app install (anonymous sign-in) may add to them. v1 limit: rules cannot check that values only grow;
       // move to a Cloud Function + App Check when the Blaze plan is enabled.

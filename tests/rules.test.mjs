@@ -126,6 +126,7 @@ test('sharing: grantees reach the owner\'s kv data by role, only with a verified
   await assertFails(getDocs(collection(stranger, `${R}/lect/kv`)));
   await assertFails(getDocs(collection(unverified, `${R}/lect/kv`)));
   await assertFails(getDocs(collection(wife, `${R}/lect/backups`)));                               // kv only
+  await assertFails(getDocs(collection(wife, `${R}/lect/mailInbox`)));                             // view: no mail inbox
   await assertFails(setDoc(doc(wife, `${R}/lect/grants/wife@gmail.com`), grant('full')));          // cannot raise own role
   await assertSucceeds(updateDoc(doc(wife, `${R}/lect/grants/wife@gmail.com`), { granteeName: 'אשתו', seen: 5 }));
   await assertFails(updateDoc(doc(wife, `${R}/lect/grants/wife@gmail.com`), { role: 'full' }));
@@ -135,6 +136,14 @@ test('sharing: grantees reach the owner\'s kv data by role, only with a verified
   await assertSucceeds(setDoc(doc(wife, `${R}/lect/kv/sessions~v1`), { v: '[]', updated: 2 }));
   await assertSucceeds(setDoc(doc(wife, `${R}/lect/kv/accumulated~v2`), { v: '{}', updated: 2 }));
   await assertFails(setDoc(doc(wife, `${R}/lect/kv/workplaces~v1`), { v: '[]', updated: 2 }));
+  // report: may import the owner's mail replies (read, mark imported), nothing else there
+  await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), `${R}/lect/mailInbox/m1`), { status: 'new', text: '9:00-16:00' }));
+  await assertSucceeds(getDocs(query(collection(wife, `${R}/lect/mailInbox`), where('status', '==', 'new'))));
+  await assertFails(updateDoc(doc(wife, `${R}/lect/mailInbox/m1`), { text: 'x' }));
+  await assertFails(deleteDoc(doc(wife, `${R}/lect/mailInbox/m1`)));
+  await assertFails(getDocs(collection(stranger, `${R}/lect/mailInbox`)));
+  await assertSucceeds(updateDoc(doc(wife, `${R}/lect/mailInbox/m1`), { status: 'imported', importedAt: 1, reportId: 'r1' }));
+  await assertFails(updateDoc(doc(wife, `${R}/lect/mailInbox/m1`), { status: 'imported', importedAt: 2 }));   // already imported
   // full
   await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), `${R}/lect/grants/wife@gmail.com`), grant('full')));
   await assertSucceeds(setDoc(doc(wife, `${R}/lect/kv/workplaces~v1`), { v: '[]', updated: 3 }));
