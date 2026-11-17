@@ -30,7 +30,9 @@ Reporting by e-mail (reporting-hours, Cloud Functions in `functions/`, mailbox r
 apps/reporting-hours/users/{uid}/mail/plan       { enabled, email, sendTime, days: {date: [session]} } ← written by the app
 apps/reporting-hours/users/{uid}/mail/sent       { sent: {"<courseId>|<date>": code} }                ← functions
 apps/reporting-hours/users/{uid}/mailInbox/{id}  { courseId, date, kind, start, end, breakMinutes, reason, text,
-                                                   receivedAt, status: new|imported }                  ← functions → app
+                                                   receivedAt, status: recorded|skipped, reportId }    ← functions (record only)
+apps/reporting-hours/users/{uid}/kv/…            the reply itself: report + minutes counter, or session mark ← functions
+                                                 (mailRecord.mjs; written like another device, the app merges it)
 apps/reporting-hours/mailCodes/{code}            one-time reply codes — server only (no client rule matches)
 ```
 
