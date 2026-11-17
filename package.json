@@ -6,7 +6,7 @@
     "build": "node sdk/build.mjs",
     "test:rules": "firebase emulators:exec --only firestore,storage --project demo-apps-platform \"node --test tests/*.test.mjs\"",
     "serve": "python3 -m http.server 8090",
-    "deploy": "firebase deploy --only firestore:rules,firestore:indexes,storage,hosting"
+    "deploy": "firebase deploy --only firestore:rules,firestore:indexes,storage,hosting,functions"
   },
   "license": "UNLICENSED",
   "devDependencies": {

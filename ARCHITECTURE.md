@@ -24,6 +24,16 @@ apps/{appId}/users/{uid}/grants/{email}     { email, role: view|report|full, own
 apps/{appId}/shared/{email}/owners/{uid}    { email, role, ownerName, ownerEmail, created } ← same grant, listed by the grantee
 ```
 
+Reporting by e-mail (reporting-hours, Cloud Functions in `functions/`, mailbox reportinghours.app@gmail.com):
+
+```
+apps/reporting-hours/users/{uid}/mail/plan       { enabled, email, sendTime, days: {date: [session]} } ← written by the app
+apps/reporting-hours/users/{uid}/mail/sent       { sent: {"<courseId>|<date>": code} }                ← functions
+apps/reporting-hours/users/{uid}/mailInbox/{id}  { courseId, date, kind, start, end, breakMinutes, reason, text,
+                                                   receivedAt, status: new|imported }                  ← functions → app
+apps/reporting-hours/mailCodes/{code}            one-time reply codes — server only (no client rule matches)
+```
+
 Cloud Storage (bucket `malka-apps.firebasestorage.app`, rules in `storage.rules`, Blaze plan since 17.11.2026):
 
 ```
