@@ -20,6 +20,8 @@
 //   taxSend   (callable) — sends the user's tax-coordination form (Cloud Storage) as an attachment to the payroll
 //             address saved for that workplace, Cc the user, Reply-To the user (spec §3). Recipients come only from
 //             the saved workplace. Daily limit per user in apps/reporting-hours/taxQuota/{uid} (server only).
+//             From name = the owner's full name in their personal details (kv profile~v1). A grantee with full access
+//             may send for the owner ({ ownerUid }); the owner's name and address are used, the grantee gets a copy.
 //             The app marks the year "sent" after a successful call.
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
@@ -224,20 +226,35 @@ export const taxSend = onCall(
     if (!auth || auth.token?.firebase?.sign_in_provider === 'anonymous') {
       throw new HttpsError('unauthenticated', 'signedOut');
     }
-    const uid = auth.uid;
-    const { workplaceId, year } = request.data ?? {};
+    const { workplaceId, year, ownerUid } = request.data ?? {};
     if (typeof workplaceId !== 'string' || !workplaceId || workplaceId.length > 100 || !validYear(year)) {
       throw new HttpsError('invalid-argument', 'bad');
     }
-    // The workplace and the file — from the user's own synced data only.
-    const kv = await db.doc(`${APP}/users/${uid}/kv/${KV.workplaces}`).get();
+    const authEmail = auth.token.email_verified === true ? String(auth.token.email || '').toLowerCase() : '';
+    // Whose data: the caller's own, or — for a grantee with full access — the owner's (same check as firestore.rules).
+    let uid = auth.uid;
+    let grant = null;
+    if (ownerUid != null && ownerUid !== auth.uid) {
+      if (typeof ownerUid !== 'string' || ownerUid.length > 128 || !authEmail) throw new HttpsError('permission-denied', 'shared');
+      grant = (await db.doc(`${APP}/users/${ownerUid}/grants/${authEmail}`).get()).data();
+      if (grant?.role !== 'full') throw new HttpsError('permission-denied', 'shared');
+      uid = ownerUid;
+    }
+    // The workplace, the file and the owner's personal details — from the owner's synced data only.
+    const [kv, prof] = await Promise.all([
+      db.doc(`${APP}/users/${uid}/kv/${KV.workplaces}`).get(),
+      db.doc(`${APP}/users/${uid}/kv/${KV.profile}`).get(),
+    ]);
     const list = parseJSON(kv.get('v'), []);
+    const profile = parseJSON(prof.get('v'), {}) || {};
     const w = (Array.isArray(list) ? list : []).find(x => x?.id === workplaceId);
     if (!w) throw new HttpsError('not-found', 'workplace');
     const file = w.taxFiles?.[year];
     if (!file || !ownTaxPath(file.path, 'reporting-hours', uid)) throw new HttpsError('not-found', 'file');
-    const email = auth.token.email_verified === false ? '' : auth.token.email;
-    const m = taxMail(w, year, { name: auth.token.name, email });
+    // Sender identity = the account owner: full name from personal details; e-mail of the Google account.
+    const ownerEmail = grant ? grant.ownerEmail : authEmail;
+    const ownerName = String(profile.fullName || '').trim() || (grant ? grant.ownerName : auth.token.name) || '';
+    const m = taxMail(w, year, { name: ownerName, email: ownerEmail, phone: profile.phone }, grant ? [authEmail] : []);
     if (m.error) throw new HttpsError('failed-precondition', m.error);
 
     const obj = getStorage().bucket(BUCKET).file(file.path);
@@ -268,7 +285,8 @@ export const taxSend = onCall(
       throw new HttpsError('unavailable', 'send');
     }
     await db.collection(`${APP}/users/${uid}/taxSends`).add({
-      workplaceId, year, to: m.to, cc: m.cc, path: file.path, sentAt: Date.now(), created: FieldValue.serverTimestamp(),
+      workplaceId, year, to: m.to, cc: m.cc, path: file.path, sentBy: auth.uid, sentAt: Date.now(),
+      created: FieldValue.serverTimestamp(),
     });
     logger.info('tax form sent', { uid, workplaceId, year });
     return { ok: true, to: m.to, cc: m.cc, date };
