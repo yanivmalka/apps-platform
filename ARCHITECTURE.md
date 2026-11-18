@@ -36,6 +36,16 @@ apps/reporting-hours/users/{uid}/kv/…            the reply itself: report + mi
 apps/reporting-hours/mailCodes/{code}            one-time reply codes — server only (no client rule matches)
 ```
 
+Sending a tax-coordination form (callable `taxSend`, same mailbox): the app calls it with `{ workplaceId, year }`;
+the function reads that workplace from the user's own `kv/workplaces~v1` (payrollEmail, ccEmails, taxFiles[year]),
+attaches the file from Cloud Storage, and sends it — From "<user's name>" <mailbox>, Cc the user, Reply-To the user.
+Recipients never come from the request.
+
+```
+apps/reporting-hours/users/{uid}/taxSends/{id}   { workplaceId, year, to, cc, path, sentAt } ← functions (log)
+apps/reporting-hours/taxQuota/{uid}              { date, count } daily limit (10) — server only
+```
+
 Cloud Storage (bucket `malka-apps.firebasestorage.app`, rules in `storage.rules`, Blaze plan since 17.11.2026):
 
 ```

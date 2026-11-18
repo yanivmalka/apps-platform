@@ -16,11 +16,18 @@
 //   apps/reporting-hours/users/{uid}/mailInbox/{id} ← record of each accepted reply (status 'recorded', reportId)
 //   apps/reporting-hours/users/{uid}/kv/…          ← the app's synced data; the reply is written here
 //   apps/reporting-hours/mailCodes/{code}          ← server only (no client rule matches)
+//
+//   taxSend   (callable) — sends the user's tax-coordination form (Cloud Storage) as an attachment to the payroll
+//             address saved for that workplace, Cc the user, Reply-To the user (spec §3). Recipients come only from
+//             the saved workplace. Daily limit per user in apps/reporting-hours/taxQuota/{uid} (server only).
+//             The app marks the year "sent" after a successful call.
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 import { logger } from 'firebase-functions';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import nodemailer from 'nodemailer';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
@@ -36,6 +43,7 @@ import {
   senderOk,
 } from './mailParse.mjs';
 import { KV, parseJSON, recordReply } from './mailRecord.mjs';
+import { attachmentName, nextQuota, ownTaxPath, taxMail, validYear } from './taxMail.mjs';
 
 initializeApp();
 const db = getFirestore();
@@ -205,3 +213,64 @@ async function handleReply(parsed, mailer) {
   await reply(confirmationMail(result, c.item, c.date));
   logger.info('reply recorded', { uid: c.uid, code, kind: result.kind });
 }
+
+const BUCKET = 'malka-apps.firebasestorage.app';
+const TAX_FILE_MAX = 10 * 1024 * 1024;
+
+export const taxSend = onCall(
+  { secrets: [GMAIL_APP_PASSWORD], timeoutSeconds: 60, memory: '512MiB' },
+  async request => {
+    const auth = request.auth;
+    if (!auth || auth.token?.firebase?.sign_in_provider === 'anonymous') {
+      throw new HttpsError('unauthenticated', 'signedOut');
+    }
+    const uid = auth.uid;
+    const { workplaceId, year } = request.data ?? {};
+    if (typeof workplaceId !== 'string' || !workplaceId || workplaceId.length > 100 || !validYear(year)) {
+      throw new HttpsError('invalid-argument', 'bad');
+    }
+    // The workplace and the file — from the user's own synced data only.
+    const kv = await db.doc(`${APP}/users/${uid}/kv/${KV.workplaces}`).get();
+    const list = parseJSON(kv.get('v'), []);
+    const w = (Array.isArray(list) ? list : []).find(x => x?.id === workplaceId);
+    if (!w) throw new HttpsError('not-found', 'workplace');
+    const file = w.taxFiles?.[year];
+    if (!file || !ownTaxPath(file.path, 'reporting-hours', uid)) throw new HttpsError('not-found', 'file');
+    const email = auth.token.email_verified === false ? '' : auth.token.email;
+    const m = taxMail(w, year, { name: auth.token.name, email });
+    if (m.error) throw new HttpsError('failed-precondition', m.error);
+
+    const obj = getStorage().bucket(BUCKET).file(file.path);
+    const [exists] = await obj.exists();
+    if (!exists) throw new HttpsError('not-found', 'file');
+    const [meta] = await obj.getMetadata();
+    if (Number(meta.size) > TAX_FILE_MAX) throw new HttpsError('failed-precondition', 'tooBig');
+    const [content] = await obj.download();
+
+    const quotaRef = db.doc(`${APP}/taxQuota/${uid}`);
+    const { date } = nowLocal();
+    await db.runTransaction(async tx => {
+      const q = nextQuota((await tx.get(quotaRef)).data(), date);
+      if (!q.ok) throw new HttpsError('resource-exhausted', 'quota');
+      tx.set(quotaRef, q.value);
+    });
+
+    const ext = /\.([a-z0-9]{2,5})$/i.exec(file.path)?.[1] ?? 'pdf';
+    try {
+      await transport().sendMail({
+        from: { name: m.fromName, address: MAILBOX },
+        to: m.to, cc: m.cc, replyTo: m.replyTo,
+        subject: m.subject, text: m.text,
+        attachments: [{ filename: attachmentName(file.name, year, ext), content, contentType: file.contentType || meta.contentType }],
+      });
+    } catch (e) {
+      logger.error('tax send failed', { uid, workplaceId, year, error: String(e) });
+      throw new HttpsError('unavailable', 'send');
+    }
+    await db.collection(`${APP}/users/${uid}/taxSends`).add({
+      workplaceId, year, to: m.to, cc: m.cc, path: file.path, sentAt: Date.now(), created: FieldValue.serverTimestamp(),
+    });
+    logger.info('tax form sent', { uid, workplaceId, year });
+    return { ok: true, to: m.to, cc: m.cc, date };
+  },
+);
