@@ -15,6 +15,7 @@ export const KV = {
   workplaces: 'workplaces~v1',
   payBasis: 'pay-basis~v1',
   leftoverMode: 'leftover-mode~v1',
+  profile: 'profile~v1',
 };
 
 const ACADEMIC_HOUR = 45;

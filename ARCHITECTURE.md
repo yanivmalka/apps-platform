@@ -38,8 +38,9 @@ apps/reporting-hours/mailCodes/{code}            one-time reply codes — server
 
 Sending a tax-coordination form (callable `taxSend`, same mailbox): the app calls it with `{ workplaceId, year }`;
 the function reads that workplace from the user's own `kv/workplaces~v1` (payrollEmail, ccEmails, taxFiles[year]),
-attaches the file from Cloud Storage, and sends it — From "<user's name>" <mailbox>, Cc the user, Reply-To the user.
-Recipients never come from the request.
+attaches the file from Cloud Storage, and sends it — From "<owner's full name from kv/profile~v1>" <mailbox>, Cc the owner,
+Reply-To the owner. Recipients never come from the request. A grantee with role `full` may call it with `{ ownerUid }`
+(checked against `users/{owner}/grants/{email}`, like the rules): the owner's name and address are used, the grantee is Cc'd.
 
 ```
 apps/reporting-hours/users/{uid}/taxSends/{id}   { workplaceId, year, to, cc, path, sentAt } ← functions (log)

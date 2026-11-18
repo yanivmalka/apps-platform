@@ -32,18 +32,20 @@ export function attachmentName(name, year, ext) {
  * The user gets a copy (Cc) and replies from the institution reach them directly (Reply-To).
  *
  * workplace: { name, payrollEmail, ccEmails?, employeeNumber? }
- * user:      { name, email }
+ * user:      { name, email, phone? } — the account owner (name from their personal details, profile.fullName)
+ * extraCc:   more addresses for a copy (a grantee who sends for the owner)
  * → { to, cc, replyTo, fromName, subject, text } or { error: 'noRecipient' | 'noUserEmail' }
  */
-export function taxMail(workplace, year, user) {
+export function taxMail(workplace, year, user, extraCc = []) {
   const to = String(workplace?.payrollEmail || '').trim();
   if (!validEmail(to)) return { error: 'noRecipient' };
   const userEmail = String(user?.email || '').trim();
   if (!validEmail(userEmail)) return { error: 'noUserEmail' };
   const name = String(user?.name || '').trim().slice(0, 80);
+  const phone = String(user?.phone || '').trim().slice(0, 30);
   const lower = new Set([to.toLowerCase()]);
   const cc = [];
-  for (const raw of [...(Array.isArray(workplace.ccEmails) ? workplace.ccEmails : []), userEmail]) {
+  for (const raw of [...(Array.isArray(workplace.ccEmails) ? workplace.ccEmails : []), userEmail, ...extraCc]) {
     const a = String(raw || '').trim();
     if (!validEmail(a) || lower.has(a.toLowerCase())) continue;
     lower.add(a.toLowerCase());
@@ -52,13 +54,15 @@ export function taxMail(workplace, year, user) {
   }
   const emp = String(workplace.employeeNumber || '').trim().slice(0, 30);
   const subject = `טופס תיאום מס ${year}${name ? ` — ${name}` : ''}`;
+  // Signature like the app's signatureLines (lib/profile.ts): name, employee number, phone · e-mail.
+  const signature = [name, emp ? `מספר עובד ${emp}` : '', [phone, userEmail].filter(Boolean).join(' · ')].filter(Boolean);
   const text = [
     'שלום,',
     '',
     `מצורף טופס תיאום מס לשנת ${year}${emp ? ` (מספר עובד ${emp})` : ''}.`,
     '',
     'בברכה,',
-    name,
+    ...signature,
     '',
     '—',
     `נשלח מאפליקציית "דיווח שעות" בשם ${name || userEmail}. תשובה למייל הזה תגיע אל ${userEmail}.`,

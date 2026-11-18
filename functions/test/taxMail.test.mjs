@@ -45,3 +45,9 @@ test('daily quota', () => {
   assert.deepEqual(nextQuota({ date: '2026-11-17', count: 10 }, '2026-11-18'), { ok: true, value: { date: '2026-11-18', count: 1 } });
   assert.deepEqual(nextQuota({ date: '2026-11-18', count: 10 }, '2026-11-18'), { ok: false });
 });
+
+test('mail: grantee copy and signature with phone', () => {
+  const m = taxMail(w, '2027', { ...user, phone: '050-1234567' }, ['helper@example.com']);
+  assert.deepEqual(m.cc, ['boss@college.ac.il', 'yaniv@example.com', 'helper@example.com']);
+  assert.match(m.text, /בברכה,\nיניב מלכא\nמספר עובד 123\n050-1234567 · yaniv@example.com/);
+});
