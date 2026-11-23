@@ -134,6 +134,7 @@ test('sharing: grantees reach the owner\'s kv data by role, only with a verified
   await assertSucceeds(setDoc(doc(wife, `${R}/lect/kv/reports~v1`), { v: '[1]', updated: 2 }));
   await assertSucceeds(setDoc(doc(wife, `${R}/lect/kv/sessions~v1`), { v: '[]', updated: 2 }));
   await assertSucceeds(setDoc(doc(wife, `${R}/lect/kv/accumulated~v2`), { v: '{}', updated: 2 }));
+  await assertSucceeds(setDoc(doc(wife, `${R}/lect/kv/activity-log~v1`), { v: '[]', updated: 2 }));
   await assertFails(setDoc(doc(wife, `${R}/lect/kv/workplaces~v1`), { v: '[]', updated: 2 }));
   // full
   await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), `${R}/lect/grants/wife@gmail.com`), grant('full')));

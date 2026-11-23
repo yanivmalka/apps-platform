@@ -92,11 +92,12 @@ service cloud.firestore {
           && request.resource.data.role in ['view', 'report', 'full'];
       }
       // A grantee's access to the owner's synced data: every role reads; 'full' writes any key;
-      // 'report' writes only the reports, session marks and the accumulated-minutes counter.
+      // 'report' writes only the reports, session marks, the accumulated-minutes counter and the activity log
+      // (every report change is logged there by the app — lib/activityLog.ts in Reporting-hours).
       match /users/{uid}/kv/{key} {
         allow read: if grantRole(app, uid) in ['view', 'report', 'full'];
         allow write: if grantRole(app, uid) == 'full'
-          || (grantRole(app, uid) == 'report' && key in ['reports~v1', 'sessions~v1', 'accumulated~v2']);
+          || (grantRole(app, uid) == 'report' && key in ['reports~v1', 'sessions~v1', 'accumulated~v2', 'activity-log~v1']);
       }
 
       // stats/<season>-<night>-<shard>: counters the app increments (shown / prayed / more / dwell / hours per order).
